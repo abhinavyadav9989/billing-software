@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,10 +9,12 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { StoreProfile } from '@/types';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import supabase from '@/lib/supabase';
 
 const Profile = () => {
   const { user } = useAuth();
-  const [storeProfile, setStoreProfile] = useLocalStorage<StoreProfile>('pos_store_profile', {
+  const [storeProfile, setStoreProfile] = useState<StoreProfile | null>(null);
+  const [formData, setFormData] = useState<StoreProfile>({
     name: 'My Store',
     email: user?.email || '',
     phone: '',
@@ -20,19 +22,63 @@ const Profile = () => {
     gstNumber: '',
     logo: ''
   });
-
-  const [formData, setFormData] = useState<StoreProfile>(storeProfile);
   const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user) return;
+      const { data, error } = await supabase
+        .from('store_profile')
+        .select('*')
+        .eq('owner_id', user.id)
+        .maybeSingle();
+      if (error) {
+        // silent fail; first-time users may not have profile yet
+        return;
+      }
+      if (data) {
+        const sp: StoreProfile = {
+          name: data.title || 'My Store',
+          email: formData.email,
+          phone: data.phone || '',
+          address: data.location || '',
+          gstNumber: data.gst_number || '',
+          logo: data.profile_image_url || ''
+        };
+        setStoreProfile(sp);
+        setFormData(sp);
+      }
+    };
+    loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const handleSave = () => {
     if (!formData.name || !formData.email) {
       toast({ title: "Error", description: "Store name and email are required", variant: "destructive" });
       return;
     }
-
-    setStoreProfile(formData);
-    setIsEditing(false);
-    toast({ title: "Success", description: "Profile updated successfully!" });
+    (async () => {
+      if (!user) return;
+      const payload = {
+        owner_id: user.id,
+        title: formData.name,
+        phone: formData.phone,
+        location: formData.address,
+        gst_number: formData.gstNumber,
+        profile_image_url: formData.logo
+      } as const;
+      const { error } = await supabase
+        .from('store_profile')
+        .upsert(payload, { onConflict: 'owner_id' });
+      if (error) {
+        toast({ title: 'Error', description: error.message, variant: 'destructive' });
+        return;
+      }
+      setStoreProfile(formData);
+      setIsEditing(false);
+      toast({ title: "Success", description: "Profile updated successfully!" });
+    })();
   };
 
   const handleCancel = () => {
@@ -40,16 +86,18 @@ const Profile = () => {
     setIsEditing(false);
   };
 
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        setFormData({ ...formData, logo: result });
-      };
-      reader.readAsDataURL(file);
+    if (!file || !user) return;
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, { upsert: true });
+    if (uploadError) {
+      toast({ title: 'Upload failed', description: uploadError.message, variant: 'destructive' });
+      return;
     }
+    const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+    setFormData({ ...formData, logo: data.publicUrl });
   };
 
   return (

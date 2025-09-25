@@ -11,6 +11,8 @@ import { Search, Plus, Minus, ShoppingCart, Scan, CreditCard, IndianRupee, Trash
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { Product, CartItem, Order } from '@/types';
 import { toast } from '@/components/ui/use-toast';
+import { createOrderWithItemsSupabase } from '@/lib/orders';
+import { Input as TextInput } from '@/components/ui/input';
 
 const Cart = () => {
   const [products] = useLocalStorage<Product[]>('pos_products', []);
@@ -21,6 +23,9 @@ const Cart = () => {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi'>('cash');
   const [cashGiven, setCashGiven] = useState('');
   const [isCheckoutDialogOpen, setIsCheckoutDialogOpen] = useState(false);
+  // TEMP for testing: org/outlet ids to target
+  const [orgClientId, setOrgClientId] = useState('');
+  const [outletClientId, setOutletClientId] = useState('');
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -104,7 +109,7 @@ const Cart = () => {
     setIsCheckoutDialogOpen(true);
   };
 
-  const confirmOrder = () => {
+  const confirmOrder = async () => {
     const { totalAmount, totalDiscount, finalAmount } = calculateTotals();
     
     if (paymentMethod === 'cash') {
@@ -114,43 +119,43 @@ const Cart = () => {
         return;
       }
     }
+    if (!orgClientId || !outletClientId) {
+      toast({ title: 'Missing IDs', description: 'Please provide Org and Outlet IDs to place order (temporary).', variant: 'destructive' });
+      return;
+    }
 
-    // Update product stock
-    const updatedProducts = products.map(product => {
-      const cartItem = cartItems.find(item => item.productId === product.id);
-      if (cartItem) {
-        return { ...product, stock: product.stock - cartItem.quantity };
-      }
-      return product;
-    });
-    
-    // Save updated products to localStorage
-    localStorage.setItem('pos_products', JSON.stringify(updatedProducts));
-
-    const newOrder: Order = {
-      id: Date.now().toString(),
-      customerName: customerDetails.name,
-      customerMobile: customerDetails.mobile,
-      items: cartItems,
-      totalAmount,
-      totalDiscount,
-      finalAmount,
-      paymentMethod,
-      paymentStatus: 'completed',
-      cashGiven: paymentMethod === 'cash' ? parseFloat(cashGiven) : undefined,
-      changeAmount: paymentMethod === 'cash' ? parseFloat(cashGiven) - finalAmount : undefined,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+    const payload = {
+      org_client_id: orgClientId,
+      outlet_client_id: outletClientId,
+      customer_name: customerDetails.name || undefined,
+      customer_mobile: customerDetails.mobile || undefined,
+      total_amount: totalAmount,
+      total_discount: totalDiscount,
+      final_amount: finalAmount,
+      payment_method: paymentMethod,
+      payment_status: 'completed' as const,
+      cash_given: paymentMethod === 'cash' ? parseFloat(cashGiven) : undefined,
+      change_amount: paymentMethod === 'cash' ? parseFloat(cashGiven) - finalAmount : undefined,
+      items: cartItems.map(ci => ({
+        product_id: ci.productId,
+        name: ci.name,
+        price: ci.price,
+        discount: ci.discount,
+        quantity: ci.quantity,
+        total: ci.total,
+      }))
     };
 
-    setOrders([...orders, newOrder]);
+    const res = await createOrderWithItemsSupabase(payload);
+    if (!res.ok) {
+      toast({ title: 'Checkout failed', description: res.error, variant: 'destructive' });
+      return;
+    }
+
+    // Local UI cleanup
     clearCart();
     setIsCheckoutDialogOpen(false);
-    
-    toast({ 
-      title: "Success", 
-      description: `Order completed! Order ID: ${newOrder.id}` 
-    });
+    toast({ title: 'Success', description: `Order completed! Order ID: ${res.orderId}` });
   };
 
   const { totalAmount, totalDiscount, finalAmount } = calculateTotals();
@@ -158,6 +163,13 @@ const Cart = () => {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+      {/* TEMP inputs for Org/Outlet IDs to test Supabase checkout */}
+      <div className="lg:col-span-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+          <TextInput placeholder="Org Client ID" value={orgClientId} onChange={(e) => setOrgClientId(e.target.value)} className="glass" />
+          <TextInput placeholder="Outlet Client ID" value={outletClientId} onChange={(e) => setOutletClientId(e.target.value)} className="glass" />
+        </div>
+      </div>
       {/* Product Search & Selection */}
       <div className="lg:col-span-2 space-y-6">
         <Card className="glass-card">

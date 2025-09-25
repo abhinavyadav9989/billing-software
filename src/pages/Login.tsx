@@ -11,7 +11,7 @@ import { toast } from '@/components/ui/use-toast';
 const Login = () => {
   const { login, register, isLoading } = useAuth();
   const [loginData, setLoginData] = useState({ email: '', password: '' });
-  const [registerData, setRegisterData] = useState({ email: '', password: '', name: '' });
+  const [registerData, setRegisterData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
 
@@ -21,25 +21,29 @@ const Login = () => {
       toast({ title: "Error", description: "Please fill all fields", variant: "destructive" });
       return;
     }
-
-    const success = await login(loginData.email, loginData.password);
-    if (!success) {
-      toast({ title: "Login Failed", description: "Invalid email or password", variant: "destructive" });
+    const res = await login(loginData.email, loginData.password);
+    if (!res.ok) {
+      toast({ title: "Login Failed", description: res.error || "Invalid email or password", variant: "destructive" });
     }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!registerData.email || !registerData.password || !registerData.name) {
+    if (!registerData.name || !registerData.email || !registerData.password || !registerData.confirmPassword) {
       toast({ title: "Error", description: "Please fill all fields", variant: "destructive" });
       return;
     }
-
-    const success = await register(registerData.email, registerData.password, registerData.name);
-    if (!success) {
-      toast({ title: "Registration Failed", description: "User already exists with this email", variant: "destructive" });
+    if (registerData.password !== registerData.confirmPassword) {
+      toast({ title: "Error", description: "Passwords do not match", variant: "destructive" });
+      return;
+    }
+    const res = await register(registerData.email, registerData.password, registerData.name);
+    if (!res.ok) {
+      toast({ title: "Registration Failed", description: res.error || "Could not create account", variant: "destructive" });
+    } else if (res.needsVerification) {
+      toast({ title: "Verify your email", description: "We sent a verification link. Please verify, then sign in.", });
     } else {
-      toast({ title: "Success", description: "Account created successfully!" });
+      toast({ title: "Success", description: "Account created and signed in." });
     }
   };
 
@@ -178,6 +182,18 @@ const Login = () => {
                         {showRegisterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="register-confirm-password">Confirm Password</Label>
+                    <Input
+                      id="register-confirm-password"
+                      type="password"
+                      placeholder="Confirm your password"
+                      value={registerData.confirmPassword}
+                      onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })}
+                      className="glass"
+                      disabled={isLoading}
+                    />
                   </div>
                   <Button
                     type="submit"

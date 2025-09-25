@@ -2,7 +2,7 @@ import React from 'react';
 import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { BarChart3, Package, ShoppingCart, FileText, User, LogOut, Zap } from 'lucide-react';
+import { BarChart3, Package, ShoppingCart, FileText, User, LogOut, Zap, Shield } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -10,12 +10,15 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const isPlatformAdmin = (user?.email || '').toLowerCase() === 'ravi.abhinavyadav@gmail.com';
+
   const menuItems = [
     { icon: BarChart3, label: 'Dashboard', path: '/dashboard' },
     { icon: Package, label: 'Inventory', path: '/inventory' },
     { icon: ShoppingCart, label: 'Billing', path: '/cart' },
     { icon: FileText, label: 'Orders', path: '/orders' },
     { icon: User, label: 'Profile', path: '/profile' },
+    ...(isPlatformAdmin ? [{ icon: Shield, label: 'Admin', path: '/admin' } as const] : [])
   ];
 
   const handleLogout = () => {

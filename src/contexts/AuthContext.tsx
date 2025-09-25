@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import supabase from '@/lib/supabase';
 
 interface User {
   id: string;
@@ -9,9 +10,9 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (email: string, password: string, name: string) => Promise<boolean>;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  register: (email: string, password: string, name: string) => Promise<{ ok: boolean; needsVerification?: boolean; error?: string }>;
+  logout: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -30,82 +31,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored user on app load
-    const storedUser = localStorage.getItem('pos_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
+    let mounted = true;
+    const init = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      const sessionUser = data.session?.user;
+      if (sessionUser) {
+        const profileName = (sessionUser.user_metadata as any)?.full_name || sessionUser.email?.split('@')[0] || '';
+        setUser({ id: sessionUser.id, email: sessionUser.email || '', name: profileName, createdAt: sessionUser.created_at || new Date().toISOString() });
+      } else {
+        setUser(null);
+      }
+      setIsLoading(false);
+    };
+    init();
+
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const sessionUser = session?.user;
+      if (sessionUser) {
+        const profileName = (sessionUser.user_metadata as any)?.full_name || sessionUser.email?.split('@')[0] || '';
+        setUser({ id: sessionUser.id, email: sessionUser.email || '', name: profileName, createdAt: sessionUser.created_at || new Date().toISOString() });
+      } else {
+        setUser(null);
+      }
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login: AuthContextType['login'] = async (email, password) => {
     setIsLoading(true);
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Check if user exists in localStorage
-      const users = JSON.parse(localStorage.getItem('pos_users') || '[]');
-      const existingUser = users.find((u: any) => u.email === email && u.password === password);
-      
-      if (existingUser) {
-        const userWithoutPassword = { ...existingUser };
-        delete userWithoutPassword.password;
-        setUser(userWithoutPassword);
-        localStorage.setItem('pos_user', JSON.stringify(userWithoutPassword));
-        return true;
-      }
-      return false;
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) return { ok: false, error: error.message };
+      return { ok: true };
     } finally {
       setIsLoading(false);
     }
   };
 
-  const register = async (email: string, password: string, name: string): Promise<boolean> => {
+  const register: AuthContextType['register'] = async (email, password, name) => {
     setIsLoading(true);
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Check if user already exists
-      const users = JSON.parse(localStorage.getItem('pos_users') || '[]');
-      const existingUser = users.find((u: any) => u.email === email);
-      
-      if (existingUser) {
-        return false; // User already exists
-      }
-      
-      // Create new user
-      const newUser = {
-        id: Date.now().toString(),
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        name,
-        createdAt: new Date().toISOString()
-      };
-      
-      users.push(newUser);
-      localStorage.setItem('pos_users', JSON.stringify(users));
-      
-      // Login the user
-      const userWithoutPassword = { ...newUser };
-      delete userWithoutPassword.password;
-      setUser(userWithoutPassword);
-      localStorage.setItem('pos_user', JSON.stringify(userWithoutPassword));
-      
-      return true;
+        options: {
+          data: { full_name: name },
+          emailRedirectTo: `${window.location.origin}/login`
+        }
+      });
+      if (error) return { ok: false, error: error.message };
+      // If email confirmations are ON, user must verify before session exists
+      const needsVerification = !data.session;
+      return { ok: true, needsVerification };
     } finally {
       setIsLoading(false);
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem('pos_user');
   };
 
+  const value = useMemo(() => ({ user, login, register, logout, isLoading }), [user, isLoading]);
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isLoading }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
