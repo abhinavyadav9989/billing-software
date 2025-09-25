@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Futuristic Billing POS Design System - Neon & Glassmorphism Theme */
+
+@layer base {
+  :root {
+    /* Core Background & Text Colors */
+    --background: 220 13% 8%;
+    --foreground: 210 40% 98%;
+
+    /* Glassmorphic Card Backgrounds */
+    --card: 220 13% 12%;
+    --card-foreground: 210 40% 98%;
+
+    /* Popover & Modal Backgrounds */
+    --popover: 220 13% 10%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Primary Neon Cyan */
+    --primary: 180 100% 50%;
+    --primary-foreground: 220 13% 8%;
+
+    /* Secondary Neon Purple */
+    --secondary: 270 100% 70%;
+    --secondary-foreground: 220 13% 8%;
+
+    /* Muted Glass Elements */
+    --muted: 220 13% 15%;
+    --muted-foreground: 210 20% 65%;
+
+    /* Accent Neon Green */
+    --accent: 120 100% 50%;
+    --accent-foreground: 220 13% 8%;
+
+    /* Error/Destructive Neon Red */
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 210 40% 98%;
+
+    /* Borders & Inputs with Glass Effect */
+    --border: 210 20% 25%;
+    --input: 220 13% 15%;
+    --ring: 180 100% 50%;
+
+    /* Border Radius */
+    --radius: 0.75rem;
+
+    /* Neon Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(180 100% 50%), hsl(200 100% 60%));
+    --gradient-secondary: linear-gradient(135deg, hsl(270 100% 70%), hsl(300 100% 80%));
+    --gradient-accent: linear-gradient(135deg, hsl(120 100% 50%), hsl(140 100% 60%));
+    --gradient-glass: linear-gradient(135deg, hsla(210 20% 25% / 0.3), hsla(210 20% 35% / 0.1));
+
+    /* Neon Glows */
+    --glow-primary: 0 0 20px hsl(180 100% 50% / 0.5);
+    --glow-secondary: 0 0 20px hsl(270 100% 70% / 0.5);
+    --glow-accent: 0 0 20px hsl(120 100% 50% / 0.5);
+    --glow-destructive: 0 0 20px hsl(0 100% 50% / 0.5);
+
+    /* Glass Backdrop */
+    --glass-bg: hsla(220 13% 15% / 0.8);
+    --glass-border: hsla(210 20% 35% / 0.2);
+
+    /* Sidebar Futuristic */
+    --sidebar-background: 220 13% 10%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 180 100% 50%;
+    --sidebar-primary-foreground: 220 13% 8%;
+    --sidebar-accent: 220 13% 15%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 210 20% 25%;
+    --sidebar-ring: 180 100% 50%;
+  }
+
+  .dark {
+    /* Already optimized for dark theme above */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-mono;
+    background: radial-gradient(ellipse at top, hsl(220 13% 12%), hsl(220 13% 8%));
+    min-height: 100vh;
+  }
+
+  /* Glassmorphism utilities */
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+  }
+
+  .glass-card {
+    @apply glass rounded-2xl;
+  }
+
+  /* Neon glow effects */
+  .neon-primary {
+    box-shadow: var(--glow-primary);
+  }
+
+  .neon-secondary {
+    box-shadow: var(--glow-secondary);
+  }
+
+  .neon-accent {
+    box-shadow: var(--glow-accent);
+  }
+
+  .neon-destructive {
+    box-shadow: var(--glow-destructive);
+  }
+
+  /* Smooth animations */
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+
+  @keyframes glow {
+    from {
+      box-shadow: var(--glow-primary);
+    }
+    to {
+      box-shadow: 0 0 30px hsl(180 100% 50% / 0.8);
+    }
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(220 13% 12%);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, hsl(180 100% 50%), hsl(270 100% 70%));
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, hsl(180 100% 60%), hsl(270 100% 80%));
+  }
+}
