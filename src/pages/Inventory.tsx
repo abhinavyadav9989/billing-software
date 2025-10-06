@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,12 +6,14 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Plus, Search, Edit, Trash2, Package, QrCode, Upload } from 'lucide-react';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { Product } from '@/types';
 import { toast } from '@/components/ui/use-toast';
+import supabase from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Inventory = () => {
-  const [products, setProducts] = useLocalStorage<Product[]>('pos_products', []);
+  const { user } = useAuth();
+  const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -20,11 +22,34 @@ const Inventory = () => {
     price: '',
     costPrice: '',
     discount: '',
-    stock: '',
+    stock: '', // number of packs/items
     stockLevel: '',
     category: '',
     barcode: ''
   });
+  // Units and org selection
+  const [measureCategory, setMeasureCategory] = useState<'liquid'|'solid'|'piece'>('piece');
+  const [unit, setUnit] = useState<'ml'|'l'|'g'|'kg'|'pcs'>('pcs');
+  const [packSize, setPackSize] = useState('1'); // in chosen unit
+  const [orgClientId, setOrgClientId] = useState('');
+
+  useEffect(() => {
+    const load = async () => {
+      if (!user) return;
+      const query = supabase
+        .from('products')
+        .select('*')
+        .eq('created_by', user.id)
+        .order('created_at', { ascending: false });
+      const { data, error } = await query;
+      if (error) {
+        toast({ title: 'Error', description: error.message, variant: 'destructive' });
+        return;
+      }
+      setProducts((data || []) as any);
+    };
+    load();
+  }, [user]);
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -44,60 +69,115 @@ const Inventory = () => {
       barcode: ''
     });
     setEditingProduct(null);
+    setMeasureCategory('piece');
+    setUnit('pcs');
+    setPackSize('1');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const toBase = (qty: number) => {
+    if (measureCategory === 'liquid') {
+      const size = unit === 'l' ? Number(packSize) * 1000 : Number(packSize);
+      return qty * size; // base ml
+    }
+    if (measureCategory === 'solid') {
+      const size = unit === 'kg' ? Number(packSize) * 1000 : Number(packSize);
+      return qty * size; // base g
+    }
+    return qty; // pcs
+  };
+
+  const baseUnit = () => {
+    if (measureCategory === 'liquid') return 'ml';
+    if (measureCategory === 'solid') return 'g';
+    return 'pcs';
+  };
+
+  const quantityPerItem = () => {
+    if (measureCategory === 'liquid') return unit === 'l' ? Number(packSize) * 1000 : Number(packSize);
+    if (measureCategory === 'solid') return unit === 'kg' ? Number(packSize) * 1000 : Number(packSize);
+    return 1;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!newProduct.name || !newProduct.price || !newProduct.stock) {
       toast({ title: "Error", description: "Please fill all required fields", variant: "destructive" });
       return;
     }
+    if (!user) {
+      toast({ title: 'Error', description: 'Not authenticated', variant: 'destructive' });
+      return;
+    }
 
-    const productData: Product = {
-      id: editingProduct?.id || Date.now().toString(),
+    const payload: any = {
       name: newProduct.name,
+      description: null,
       price: parseFloat(newProduct.price),
-      costPrice: newProduct.costPrice ? parseFloat(newProduct.costPrice) : undefined,
+      cost_price: newProduct.costPrice ? parseFloat(newProduct.costPrice) : null,
       discount: parseFloat(newProduct.discount) || 0,
-      stock: parseInt(newProduct.stock),
-      stockLevel: parseInt(newProduct.stockLevel) || 5,
-      category: newProduct.category,
+      stock: toBase(parseInt(newProduct.stock, 10)),
+      stock_level: parseInt(newProduct.stockLevel || '5', 10),
+      category: newProduct.category || null,
       barcode: newProduct.barcode || `BAR${Date.now()}`,
-      createdAt: editingProduct?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      created_by: user.id,
+      org_client_id: orgClientId || null,
+      measure_category: measureCategory,
+      base_unit: baseUnit(),
+      quantity_per_item: quantityPerItem()
     };
 
     if (editingProduct) {
-      setProducts(products.map(p => p.id === editingProduct.id ? productData : p));
-      toast({ title: "Success", description: "Product updated successfully!" });
+      const { error } = await supabase.from('products').update(payload as any).eq('id', editingProduct.id);
+      if (error) {
+        toast({ title: 'Error', description: error.message, variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Success', description: 'Product updated successfully!' });
     } else {
-      setProducts([...products, productData]);
-      toast({ title: "Success", description: "Product added successfully!" });
+      const { error } = await supabase.from('products').insert(payload as any);
+      if (error) {
+        toast({ title: 'Error', description: error.message, variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Success', description: 'Product added successfully!' });
     }
 
+    // reload list
+    const { data } = await supabase.from('products').select('*').eq('created_by', user.id).order('created_at', { ascending: false });
+    setProducts((data || []) as any);
     resetForm();
     setIsAddDialogOpen(false);
   };
 
-  const handleEdit = (product: Product) => {
+  const handleEdit = (product: any) => {
     setEditingProduct(product);
     setNewProduct({
       name: product.name,
       price: product.price.toString(),
       costPrice: product.costPrice?.toString() || '',
       discount: product.discount.toString(),
-      stock: product.stock.toString(),
+      stock: '1',
       stockLevel: product.stockLevel.toString(),
       category: product.category || '',
       barcode: product.barcode || ''
     });
     setIsAddDialogOpen(true);
+    // set units from product
+    setMeasureCategory((product as any).measure_category || 'piece');
+    const bu = (product as any).base_unit || 'pcs';
+    setUnit(bu === 'ml' ? 'ml' : bu === 'g' ? 'g' : 'pcs');
+    setPackSize(((product as any).quantity_per_item || 1).toString());
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      return;
+    }
     setProducts(products.filter(p => p.id !== id));
-    toast({ title: "Success", description: "Product deleted successfully!" });
+    toast({ title: 'Success', description: 'Product deleted successfully!' });
   };
 
   return (
@@ -140,6 +220,12 @@ const Inventory = () => {
                     placeholder="Product category"
                   />
                 </div>
+              </div>
+
+              {/* Org selection (temporary) */}
+              <div className="space-y-2">
+                <Label htmlFor="org">Organization Client ID (optional)</Label>
+                <Input id="org" value={orgClientId} onChange={(e) => setOrgClientId(e.target.value)} className="glass" placeholder="org_client_id" />
               </div>
               
               <div className="grid grid-cols-2 gap-4">
@@ -193,6 +279,40 @@ const Inventory = () => {
                   />
                 </div>
               </div>
+              {/* Units */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Measure Category</Label>
+                  <select className="glass w-full h-10 rounded-md px-3" value={measureCategory} onChange={(e) => {
+                    const v = e.target.value as 'liquid'|'solid'|'piece';
+                    setMeasureCategory(v);
+                    setUnit(v==='liquid'?'ml':v==='solid'?'g':'pcs');
+                    setPackSize('1');
+                  }}>
+                    <option value="piece">Piece</option>
+                    <option value="liquid">Liquid</option>
+                    <option value="solid">Solid</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Unit</Label>
+                  <select className="glass w-full h-10 rounded-md px-3" value={unit} onChange={(e)=>setUnit(e.target.value as any)}>
+                    {measureCategory==='liquid' && (<>
+                      <option value="ml">ml</option>
+                      <option value="l">L</option>
+                    </>)}
+                    {measureCategory==='solid' && (<>
+                      <option value="g">g</option>
+                      <option value="kg">kg</option>
+                    </>)}
+                    {measureCategory==='piece' && (<option value="pcs">pcs</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Pack Size</Label>
+                  <Input value={packSize} onChange={(e)=>setPackSize(e.target.value)} className="glass" placeholder={measureCategory==='piece'?'1':'e.g. 500'} />
+                </div>
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -203,7 +323,7 @@ const Inventory = () => {
                     value={newProduct.stock}
                     onChange={(e) => setNewProduct({ ...newProduct, stock: e.target.value })}
                     className="glass"
-                    placeholder="0"
+                    placeholder="Number of packs/items"
                   />
                 </div>
                 <div className="space-y-2">
