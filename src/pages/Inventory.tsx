@@ -32,16 +32,16 @@ const Inventory = () => {
   const [unit, setUnit] = useState<'ml'|'l'|'g'|'kg'|'pcs'>('pcs');
   const [packSize, setPackSize] = useState('1'); // in chosen unit
   const [orgClientId, setOrgClientId] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
 
   useEffect(() => {
     const load = async () => {
       if (!user) return;
-      const query = supabase
+      const { data, error } = await supabase
         .from('products')
         .select('*')
-        .eq('created_by', user.id)
-        .order('created_at', { ascending: false });
-      const { data, error } = await query;
+        .eq('created_by', user.id);
       if (error) {
         toast({ title: 'Error', description: error.message, variant: 'destructive' });
         return;
@@ -72,6 +72,8 @@ const Inventory = () => {
     setMeasureCategory('piece');
     setUnit('pcs');
     setPackSize('1');
+    setImageFile(null);
+    setImagePreview('');
   };
 
   const toBase = (qty: number) => {
@@ -127,6 +129,19 @@ const Inventory = () => {
       quantity_per_item: quantityPerItem()
     };
 
+    // optional image upload
+    if (imageFile) {
+      const path = `${user.id}/${Date.now()}_${imageFile.name}`;
+      const { error: upErr } = await supabase.storage.from('product-images').upload(path, imageFile, { upsert: true });
+      if (upErr) {
+        toast({ title: 'Image upload failed', description: upErr.message, variant: 'destructive' });
+        return;
+      }
+      const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(path);
+      payload.image_path = path;
+      payload.image_url = urlData.publicUrl;
+    }
+
     if (editingProduct) {
       const { error } = await supabase.from('products').update(payload as any).eq('id', editingProduct.id);
       if (error) {
@@ -144,7 +159,7 @@ const Inventory = () => {
     }
 
     // reload list
-    const { data } = await supabase.from('products').select('*').eq('created_by', user.id).order('created_at', { ascending: false });
+    const { data } = await supabase.from('products').select('*').eq('created_by', user.id);
     setProducts((data || []) as any);
     resetForm();
     setIsAddDialogOpen(false);
@@ -168,6 +183,7 @@ const Inventory = () => {
     const bu = (product as any).base_unit || 'pcs';
     setUnit(bu === 'ml' ? 'ml' : bu === 'g' ? 'g' : 'pcs');
     setPackSize(((product as any).quantity_per_item || 1).toString());
+    setImagePreview((product as any).image_url || '');
   };
 
   const handleDelete = async (id: string) => {
@@ -312,6 +328,29 @@ const Inventory = () => {
                   <Label>Pack Size</Label>
                   <Input value={packSize} onChange={(e)=>setPackSize(e.target.value)} className="glass" placeholder={measureCategory==='piece'?'1':'e.g. 500'} />
                 </div>
+              </div>
+
+              {/* Image upload */}
+              <div className="space-y-2">
+                <Label>Product Image</Label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setImageFile(f);
+                    if (f) {
+                      const r = new FileReader();
+                      r.onload = () => setImagePreview(r.result as string);
+                      r.readAsDataURL(f);
+                    } else {
+                      setImagePreview('');
+                    }
+                  }}
+                />
+                {imagePreview && (
+                  <img src={imagePreview} alt="preview" className="h-20 w-20 object-cover rounded-md" />
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
