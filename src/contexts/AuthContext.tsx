@@ -75,12 +75,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register: AuthContextType['register'] = async (email, password, name) => {
     setIsLoading(true);
     try {
+      const siteUrl = (import.meta as any).env?.VITE_SITE_URL || window.location.origin;
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: { full_name: name },
-          emailRedirectTo: `${window.location.origin}/login`
+          // Always redirect to a stable, configured domain to avoid preview 404s
+          emailRedirectTo: `${siteUrl}/login`
         }
       });
       if (error) return { ok: false, error: error.message };
